@@ -1,0 +1,6 @@
+@BuddyAgent.Web_HostAddress = http://localhost:5171
+
+GET {{BuddyAgent.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

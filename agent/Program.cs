@@ -2,13 +2,20 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GitHub.Copilot.SDK;
+using Microsoft.Extensions.Configuration;
 
 // ── Configuration ──────────────────────────────────────────────────────────────
-string githubToken  = Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddJsonFile("appsettings.local.json", optional: true)
+    .AddEnvironmentVariables()
+    .Build();
+
+string githubToken  = config["GITHUB_TOKEN"]
                       ?? throw new InvalidOperationException(
-                             "GITHUB_TOKEN environment variable is not set.");
-string modelName    = Environment.GetEnvironmentVariable("GITHUB_MODEL")
-                      ?? "gpt-4o-mini";
+                             "GITHUB_TOKEN is not set. Add it to appsettings.local.json or set the environment variable.");
+string modelName    = config["GITHUB_MODEL"] ?? "gpt-4o-mini";
 string tasksPath    = args.Length > 0 ? args[0] : "tasks.json";
 string historyPath  = args.Length > 1 ? args[1] : "history.json";
 
@@ -109,8 +116,9 @@ foreach (var task in tasks)
     {
         await using var session = await copilotClient.CreateSessionAsync(new SessionConfig
         {
-            Model         = modelName,
-            SystemMessage = new SystemMessageConfig
+            Model              = modelName,
+            OnPermissionRequest = PermissionHandler.ApproveAll,
+            SystemMessage      = new SystemMessageConfig
             {
                 Mode    = SystemMessageMode.Replace,
                 Content = "You are a helpful assistant. When URL content is provided, " +

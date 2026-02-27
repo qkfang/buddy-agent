@@ -1,8 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Azure;
-using Azure.AI.Inference;
+using GitHub.Copilot.SDK;
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 string githubToken  = Environment.GetEnvironmentVariable("GITHUB_TOKEN")
@@ -50,13 +49,16 @@ if (File.Exists(historyPath))
     Console.WriteLine($"Loaded {history.Count} existing history entry/entries from {historyPath}");
 }
 
-// ── GitHub Models client ───────────────────────────────────────────────────────
-var endpoint = new Uri("https://models.inference.ai.azure.com");
-var client   = new ChatCompletionsClient(endpoint, new AzureKeyCredential(githubToken));
-
 using var http = new HttpClient();
 http.DefaultRequestHeaders.UserAgent.ParseAdd("BuddyAgent/1.0");
 http.Timeout = TimeSpan.FromSeconds(30);
+
+// ── GitHub Copilot CLI SDK client ──────────────────────────────────────────────
+await using var copilotClient = new CopilotClient(new CopilotClientOptions
+{
+    GitHubToken = githubToken
+});
+await copilotClient.StartAsync();
 
 // ── Process tasks ──────────────────────────────────────────────────────────────
 foreach (var task in tasks)
@@ -97,7 +99,7 @@ foreach (var task in tasks)
     userMessage.Append(task.Prompt);
 
     Console.WriteLine($"  Prompt: {task.Prompt}");
-    Console.WriteLine("  Calling GitHub Models API…");
+    Console.WriteLine("  Calling GitHub Copilot CLI SDK…");
 
     string response;
     string status;
@@ -105,22 +107,40 @@ foreach (var task in tasks)
 
     try
     {
-        var chatRequest = new ChatCompletionsOptions
+        await using var session = await copilotClient.CreateSessionAsync(new SessionConfig
         {
-            Model = modelName,
-            Messages =
+            Model         = modelName,
+            SystemMessage = new SystemMessageConfig
             {
-                new ChatRequestSystemMessage(
-                    "You are a helpful assistant. When URL content is provided, "  +
-                    "use it as context to answer the user's question accurately."),
-                new ChatRequestUserMessage(userMessage.ToString())
-            },
-            MaxTokens   = 1024,
-            Temperature = 0.7f
-        };
+                Mode    = SystemMessageMode.Replace,
+                Content = "You are a helpful assistant. When URL content is provided, " +
+                          "use it as context to answer the user's question accurately."
+            }
+        });
 
-        var result = await client.CompleteAsync(chatRequest);
-        response = result.Value.Content;
+        var responseBuilder = new StringBuilder();
+        var done            = new TaskCompletionSource();
+
+        session.On(evt =>
+        {
+            switch (evt)
+            {
+                case AssistantMessageEvent msg:
+                    responseBuilder.Append(msg.Data.Content);
+                    break;
+                case SessionErrorEvent err:
+                    done.TrySetException(new Exception(err.Data.Message));
+                    break;
+                case SessionIdleEvent:
+                    done.TrySetResult();
+                    break;
+            }
+        });
+
+        await session.SendAsync(new MessageOptions { Prompt = userMessage.ToString() });
+        await done.Task;
+
+        response = responseBuilder.ToString();
         status   = "success";
 
         Console.WriteLine("  Response received.");
@@ -149,25 +169,6 @@ foreach (var task in tasks)
 var historyJson = JsonSerializer.Serialize(history, JsonOptions.Pretty);
 await File.WriteAllTextAsync(historyPath, historyJson);
 Console.WriteLine($"\nHistory written to {historyPath}  ({history.Count} total entries)");
-
-// ── Models ─────────────────────────────────────────────────────────────────────
-
-record AgentTask(
-    [property: JsonPropertyName("id")]     string Id,
-    [property: JsonPropertyName("url")]    string Url,
-    [property: JsonPropertyName("prompt")] string Prompt
-);
-
-record HistoryEntry(
-    [property: JsonPropertyName("runId")]     string          RunId,
-    [property: JsonPropertyName("timestamp")] DateTimeOffset  Timestamp,
-    [property: JsonPropertyName("taskId")]    string          TaskId,
-    [property: JsonPropertyName("url")]       string          Url,
-    [property: JsonPropertyName("prompt")]    string          Prompt,
-    [property: JsonPropertyName("response")]  string          Response,
-    [property: JsonPropertyName("status")]    string          Status,
-    [property: JsonPropertyName("error")]     string?         Error
-);
 
 // ── Markdown front-matter parser ──────────────────────────────────────────────
 static AgentTask ParseMarkdownTask(string filePath, string content)
@@ -199,6 +200,25 @@ static AgentTask ParseMarkdownTask(string filePath, string content)
 
     return new AgentTask(id, url, prompt);
 }
+
+// ── Models ─────────────────────────────────────────────────────────────────────
+
+record AgentTask(
+    [property: JsonPropertyName("id")]     string Id,
+    [property: JsonPropertyName("url")]    string Url,
+    [property: JsonPropertyName("prompt")] string Prompt
+);
+
+record HistoryEntry(
+    [property: JsonPropertyName("runId")]     string          RunId,
+    [property: JsonPropertyName("timestamp")] DateTimeOffset  Timestamp,
+    [property: JsonPropertyName("taskId")]    string          TaskId,
+    [property: JsonPropertyName("url")]       string          Url,
+    [property: JsonPropertyName("prompt")]    string          Prompt,
+    [property: JsonPropertyName("response")]  string          Response,
+    [property: JsonPropertyName("status")]    string          Status,
+    [property: JsonPropertyName("error")]     string?         Error
+);
 
 static class JsonOptions
 {

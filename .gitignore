@@ -1,0 +1,31 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# Runtime-generated files
+history.json
+
+# .NET
+*.user
+*.suo
+.vs/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Environment / secrets
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*~

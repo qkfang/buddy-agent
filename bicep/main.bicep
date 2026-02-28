@@ -115,7 +115,7 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           value: 'Production'
         }
       ]
-      alwaysOn: true
+      alwaysOn: appServicePlanSku != 'F1'
       ftpsState: 'FtpsOnly'
       minTlsVersion: '1.2'
       http20Enabled: true

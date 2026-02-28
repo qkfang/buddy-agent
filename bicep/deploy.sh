@@ -4,7 +4,7 @@
 set -e
 
 # Configuration
-RESOURCE_GROUP="buddy-agent-rg"
+RESOURCE_GROUP="rg-buddyagent"
 LOCATION="eastus"
 TEMPLATE_FILE="main.bicep"
 PARAMETERS_FILE="parameters.json"

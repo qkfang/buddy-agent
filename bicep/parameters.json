@@ -17,14 +17,6 @@
     "sqlAdminLogin": {
       "value": "buddyagentadmin"
     },
-    "sqlAdminPassword": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.KeyVault/vaults/<vault-name>"
-        },
-        "secretName": "SqlAdminPassword"
-      }
-    },
     "sqlServerName": {
       "value": "buddy-agent-sql"
     },

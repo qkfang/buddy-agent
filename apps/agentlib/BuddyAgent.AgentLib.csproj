@@ -15,7 +15,6 @@
   <ItemGroup>
     <Content Include="tasks/**/*.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="tasks.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

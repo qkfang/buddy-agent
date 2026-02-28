@@ -20,15 +20,15 @@ param location string = resourceGroup().location
 ])
 param appServicePlanSku string = 'B1'
 
-@description('The .NET Framework version')
-param dotnetVersion string = 'v9.0'
+@description('Deploy Azure SQL resources (requires policy-compliant subscription)')
+param deploySql bool = false
 
 @description('The SQL Server administrator login name')
 param sqlAdminLogin string = 'buddyagentadmin'
 
 @description('The SQL Server administrator password')
 @secure()
-param sqlAdminPassword string
+param sqlAdminPassword string = ''
 
 @description('The name of the SQL Server')
 param sqlServerName string = 'buddy-agent-sql-${uniqueString(resourceGroup().id)}'
@@ -58,8 +58,8 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   }
 }
 
-// Azure SQL Server
-resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
+// Azure SQL Server (conditional)
+resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = if (deploySql) {
   name: sqlServerName
   location: location
   properties: {
@@ -69,8 +69,8 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   }
 }
 
-// Allow Azure services to connect to SQL Server
-resource sqlServerFirewallAzure 'Microsoft.Sql/servers/firewallRules@2022-05-01-preview' = {
+// Allow Azure services to connect to SQL Server (conditional)
+resource sqlServerFirewallAzure 'Microsoft.Sql/servers/firewallRules@2022-05-01-preview' = if (deploySql) {
   parent: sqlServer
   name: 'AllowAllAzureIPs'
   properties: {
@@ -79,8 +79,8 @@ resource sqlServerFirewallAzure 'Microsoft.Sql/servers/firewallRules@2022-05-01-
   }
 }
 
-// Azure SQL Database (DTU Basic tier)
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2022-05-01-preview' = {
+// Azure SQL Database - DTU Basic tier (conditional)
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2022-05-01-preview' = if (deploySql) {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
@@ -102,17 +102,25 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
     serverFarmId: appServicePlan.id
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|9.0'
-      connectionStrings: [
+      connectionStrings: deploySql ? [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+          connectionString: 'Server=tcp:${sqlServer.?properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
           type: 'SQLAzure'
         }
-      ]
+      ] : []
       appSettings: [
         {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: 'Production'
+        }
+        {
+          name: 'GITHUB_TOKEN'
+          value: ''
+        }
+        {
+          name: 'GITHUB_MODEL'
+          value: 'gpt-4o-mini'
         }
       ]
       alwaysOn: appServicePlanSku != 'F1'
@@ -128,5 +136,5 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
 output webAppUrl string = webApp.properties.defaultHostName
 output webAppName string = webApp.name
 output appServicePlanName string = appServicePlan.name
-output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
-output sqlDatabaseName string = sqlDatabase.name
+output sqlServerFqdn string = deploySql ? sqlServer.?properties.fullyQualifiedDomainName ?? '' : ''
+output sqlDatabaseName string = deploySql ? sqlDatabase.?name ?? '' : ''

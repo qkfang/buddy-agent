@@ -6,13 +6,13 @@
       "value": "buddy-agent-webapp"
     },
     "location": {
-      "value": "eastus"
+      "value": "australiaeast"
     },
     "appServicePlanSku": {
       "value": "B1"
     },
-    "dotnetVersion": {
-      "value": "v9.0"
+    "deploySql": {
+      "value": false
     },
     "sqlAdminLogin": {
       "value": "buddyagentadmin"

@@ -12,7 +12,27 @@
       "value": "B1"
     },
     "dotnetVersion": {
-      "value": "v8.0"
+      "value": "v9.0"
+    },
+    "sqlAdminLogin": {
+      "value": "buddyagentadmin"
+    },
+    "sqlAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.KeyVault/vaults/<vault-name>"
+        },
+        "secretName": "SqlAdminPassword"
+      }
+    },
+    "sqlServerName": {
+      "value": "buddy-agent-sql"
+    },
+    "sqlDatabaseName": {
+      "value": "BuddyAgentDb"
+    },
+    "sqlDatabaseSku": {
+      "value": "Basic"
     }
   }
 }

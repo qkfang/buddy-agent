@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buddy Agent – Task Results</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; background: #f5f5f5; color: #222; }
+    h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+    .toolbar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    button { padding: .45rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: .9rem; }
+    #refreshBtn { background: #0078d4; color: #fff; }
+    #refreshBtn:hover { background: #005fa3; }
+    #status { font-size: .85rem; color: #555; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+    th { background: #0078d4; color: #fff; text-align: left; padding: .65rem 1rem; font-size: .85rem; }
+    td { padding: .6rem 1rem; font-size: .85rem; border-bottom: 1px solid #eee; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f0f7ff; }
+    .badge { display: inline-block; padding: .2rem .55rem; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+    .badge-success { background: #e6f4ea; color: #1a7f37; }
+    .badge-error   { background: #fde8e8; color: #b91c1c; }
+    .response-cell { max-width: 500px; white-space: pre-wrap; word-break: break-word; }
+    .empty { text-align: center; color: #888; padding: 2rem; }
+  </style>
+</head>
+<body>
+  <h1>🤖 Buddy Agent – Task Results</h1>
+  <div class="toolbar">
+    <button id="refreshBtn" onclick="loadResults()">↻ Refresh</button>
+    <span id="status"></span>
+  </div>
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th>Task ID</th>
+        <th>Timestamp (UTC)</th>
+        <th>Status</th>
+        <th>Response</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody">
+      <tr><td colspan="5" class="empty">Loading…</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    async function loadResults() {
+      const status = document.getElementById('status');
+      const body   = document.getElementById('resultsBody');
+      status.textContent = 'Loading…';
+      try {
+        const res  = await fetch('/api/results');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.length) {
+          body.innerHTML = '<tr><td colspan="5" class="empty">No results yet. The agent runs every hour.</td></tr>';
+        } else {
+          body.innerHTML = data.map(r => `
+            <tr>
+              <td>${esc(r.taskId)}</td>
+              <td>${new Date(r.timestamp).toLocaleString()}</td>
+              <td><span class="badge badge-${r.status === 'success' ? 'success' : 'error'}">${esc(r.status)}</span></td>
+              <td class="response-cell">${esc(r.response || '–')}</td>
+              <td>${esc(r.error || '–')}</td>
+            </tr>`).join('');
+        }
+        status.textContent = `Last updated: ${new Date().toLocaleTimeString()}  (${data.length} result(s))`;
+      } catch (e) {
+        body.innerHTML = `<tr><td colspan="5" class="empty">Error loading results: ${e.message}</td></tr>`;
+        status.textContent = '';
+      }
+    }
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+    }
+
+    loadResults();
+    setInterval(loadResults, 60_000);
+  </script>
+</body>
+</html>

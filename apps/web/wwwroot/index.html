@@ -85,6 +85,22 @@
     .alert { padding: .65rem 1rem; border-radius: 6px; font-size: .85rem; margin-top: 1rem; display: none; }
     .alert-success { background: #e6f4ea; color: #1a7f37; border: 1px solid #bbdec4; }
     .alert-error   { background: #fde8e8; color: #b91c1c; border: 1px solid #f4b8b8; }
+
+    /* Login modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: #fff; border-radius: 12px; padding: 2rem; min-width: 320px; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+    .modal h2 { margin: 0 0 1.5rem 0; font-size: 1.15rem; color: #1a202c; }
+    input[type=password] { border: 1px solid #c8d0db; border-radius: 6px; padding: .5rem .75rem; font-size: .88rem; font-family: inherit; width: 100%; background: #fff; transition: border-color .15s; }
+    input[type=password]:focus { border-color: #0078d4; outline: none; box-shadow: 0 0 0 2px rgba(0,120,212,.15); }
+
+    /* Auth button in nav */
+    nav .auth-btn { margin-left: auto; color: #0078d4; font-weight: 600; }
+    nav .auth-btn:hover { color: #005fa3; }
+
+    /* DB status badge in header */
+    .db-status { margin-left: auto; font-size: .78rem; padding: .25rem .65rem; border-radius: 12px; font-weight: 500; }
+    .db-status.sql   { background: rgba(255,255,255,.25); color: #fff; }
+    .db-status.mem   { background: rgba(255,255,255,.18); color: rgba(255,255,255,.85); }
   </style>
 </head>
 <body>
@@ -92,13 +108,34 @@
 <header>
   <span style="font-size:1.5rem">🤖</span>
   <h1>Buddy Agent</h1>
+  <span id="dbStatus" class="db-status"></span>
 </header>
 
 <nav>
   <button class="active" onclick="showTab('tasks', this)">Tasks</button>
-  <button onclick="showTab('create', this)">Create Task</button>
+  <button id="createTabBtn" onclick="requireLogin('create', this)">Create Task</button>
   <button onclick="showTab('runs', this)">Past Runs</button>
+  <button id="authBtn" class="auth-btn" onclick="handleAuthClick()">🔒 Login</button>
 </nav>
+
+<!-- ── Login modal ── -->
+<div id="loginModal" class="modal-overlay" style="display:none" onclick="handleModalBackdropClick(event)">
+  <div class="modal">
+    <h2>🔒 Admin Login</h2>
+    <div class="form-group">
+      <label for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" placeholder="Enter admin password"
+             onkeydown="if(event.key==='Enter') doLogin()" />
+    </div>
+    <div class="form-actions" style="margin-top:.9rem">
+      <button class="btn btn-primary" onclick="doLogin()">Login</button>
+      <button class="btn btn-secondary" onclick="closeLoginModal()">Cancel</button>
+    </div>
+    <div id="loginError" class="alert alert-error" style="display:none; margin-top:.75rem">
+      Incorrect password. Please try again.
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -178,6 +215,88 @@
 </main>
 
 <script>
+  // ── Authentication ─────────────────────────────────────────────────────────────
+  const ADMIN_PASSWORD = 'admin';
+  let isLoggedIn = sessionStorage.getItem('loggedIn') === '1';
+
+  function updateAuthUI() {
+    document.getElementById('authBtn').textContent = isLoggedIn ? '🔓 Logout' : '🔒 Login';
+  }
+
+  function handleAuthClick() {
+    if (isLoggedIn) {
+      isLoggedIn = false;
+      sessionStorage.removeItem('loggedIn');
+      updateAuthUI();
+      // Redirect away from Create Task if currently on it
+      const active = document.querySelector('.tab-panel.active');
+      if (active?.id === 'tab-create') {
+        showTab('tasks', document.querySelector('nav button'));
+      }
+    } else {
+      openLoginModal(null, null);
+    }
+  }
+
+  function requireLogin(tabName, btn) {
+    if (isLoggedIn) {
+      showTab(tabName, btn);
+    } else {
+      openLoginModal(tabName, btn);
+    }
+  }
+
+  let _pendingTab = null, _pendingBtn = null;
+
+  function openLoginModal(tabName, btn) {
+    _pendingTab = tabName;
+    _pendingBtn = btn;
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginError').style.display = 'none';
+    document.getElementById('loginModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('loginPassword').focus(), 50);
+  }
+
+  function closeLoginModal() {
+    document.getElementById('loginModal').style.display = 'none';
+  }
+
+  function handleModalBackdropClick(e) {
+    if (e.target === document.getElementById('loginModal')) closeLoginModal();
+  }
+
+  function doLogin() {
+    const pwd = document.getElementById('loginPassword').value;
+    if (pwd === ADMIN_PASSWORD) {
+      isLoggedIn = true;
+      sessionStorage.setItem('loggedIn', '1');
+      updateAuthUI();
+      closeLoginModal();
+      if (_pendingTab) showTab(_pendingTab, _pendingBtn);
+    } else {
+      document.getElementById('loginError').style.display = 'block';
+    }
+  }
+
+  // ── DB status ──────────────────────────────────────────────────────────────────
+  async function loadDbStatus() {
+    try {
+      const res  = await fetch('/api/dbstatus');
+      if (!res.ok) return;
+      const data = await res.json();
+      const el   = document.getElementById('dbStatus');
+      if (data.deployed) {
+        el.textContent = '🟢 SQL DB';
+        el.className   = 'db-status sql';
+        el.title       = 'Azure SQL database is configured';
+      } else {
+        el.textContent = '💾 In-Memory';
+        el.className   = 'db-status mem';
+        el.title       = 'Running with in-memory storage (no SQL connection string configured)';
+      }
+    } catch { /* non-critical */ }
+  }
+
   // ── Tab navigation ─────────────────────────────────────────────────────────────
   function showTab(name, btn) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -347,6 +466,8 @@
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────────
+  updateAuthUI();
+  loadDbStatus();
   loadTasks();
   setInterval(() => {
     const activeTab = document.querySelector('.tab-panel.active');

@@ -98,6 +98,9 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   name: webAppName
   location: location
   kind: 'app,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
@@ -105,7 +108,8 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
       connectionStrings: deploySql ? [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServer.?properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+          // Uses Managed Identity – no password in connection string
+          connectionString: 'Server=tcp:${sqlServer.?properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Managed Identity;'
           type: 'SQLAzure'
         }
       ] : []
@@ -132,9 +136,23 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   }
 }
 
+// Grant the web app's managed identity as Azure AD admin on SQL Server (conditional)
+// This allows the app to authenticate to SQL using Managed Identity.
+resource sqlEntraAdmin 'Microsoft.Sql/servers/administrators@2022-05-01-preview' = if (deploySql) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: webApp.name
+    sid: webApp.identity.principalId
+    tenantId: tenant().tenantId
+  }
+}
+
 // Output values
 output webAppUrl string = webApp.properties.defaultHostName
 output webAppName string = webApp.name
 output appServicePlanName string = appServicePlan.name
+output webAppManagedIdentityPrincipalId string = webApp.identity.principalId
 output sqlServerFqdn string = deploySql ? sqlServer.?properties.fullyQualifiedDomainName ?? '' : ''
 output sqlDatabaseName string = deploySql ? sqlDatabase.?name ?? '' : ''

@@ -143,6 +143,14 @@ app.MapPost("/api/tasks", async (CreateTaskRequest req, IConfiguration config) =
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
     .WithName("HealthCheck");
 
+// ── DB status: reports whether a SQL connection string is configured ──────────────
+app.MapGet("/api/dbstatus", (IConfiguration config) =>
+{
+    var cs = config.GetConnectionString("DefaultConnection");
+    return Results.Ok(new { deployed = !string.IsNullOrWhiteSpace(cs) });
+})
+.WithName("GetDbStatus");
+
 app.Run();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────

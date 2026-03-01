@@ -1,0 +1,166 @@
+name: Deploy to Azure
+
+# Triggers:
+#   - Push to main: full infra + code deploy (SQL disabled by default)
+#   - Manual: choose whether to also provision/update SQL resources
+#
+# Required repository secrets:
+#   AZURE_CREDENTIALS   – Service principal JSON  (Contributor on the resource group)
+#   APP_GITHUB_TOKEN    – GitHub PAT used by the agent at runtime
+#   SQL_ADMIN_PASSWORD  – SQL Server admin password (only needed when deploy_sql = true)
+#
+# Optional repository variables (override defaults):
+#   AZURE_RESOURCE_GROUP  – resource group name   (default: rg-buddyagent)
+#   AZURE_LOCATION        – Azure region           (default: australiaeast)
+#   WEBAPP_NAME           – App Service name       (default: buddy-agent-webapp)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_sql:
+        description: 'Provision / update Azure SQL resources'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  RESOURCE_GROUP:  ${{ vars.AZURE_RESOURCE_GROUP || 'rg-buddyagent' }}
+  AZURE_LOCATION:  ${{ vars.AZURE_LOCATION       || 'australiaeast' }}
+  WEBAPP_NAME:     ${{ vars.WEBAPP_NAME           || 'buddy-agent-webapp' }}
+  DOTNET_VERSION:  '9.x'
+
+jobs:
+  # ── 1. Build ────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore apps/web/BuddyAgent.Web.csproj
+
+      - name: Publish
+        run: >
+          dotnet publish apps/web/BuddyAgent.Web.csproj
+          -c Release
+          -o publish
+          --nologo
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: publish/
+          retention-days: 1
+
+  # ── 2. Deploy ───────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: production
+      url: https://${{ steps.infra.outputs.webapp_url }}
+
+    steps:
+      - name: Checkout (for Bicep templates)
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: publish/
+
+      - name: Create deployment zip
+        run: cd publish && zip -r ../deploy.zip .
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure resource group exists
+        run: |
+          az group create \
+            --name  "${{ env.RESOURCE_GROUP }}" \
+            --location "${{ env.AZURE_LOCATION }}" \
+            --output none
+
+      # Bicep deployment is idempotent – safe to run on every push
+      - name: Deploy infrastructure (Bicep)
+        id: infra
+        run: |
+          DEPLOY_SQL="${{ github.event.inputs.deploy_sql || 'false' }}"
+
+          EXTRA_PARAMS="webAppName=${{ env.WEBAPP_NAME }}"
+          if [ "$DEPLOY_SQL" == "true" ]; then
+            EXTRA_PARAMS="$EXTRA_PARAMS deploySql=true sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}"
+          fi
+
+          OUTPUT=$(az deployment group create \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --template-file  bicep/main.bicep \
+            --parameters     @bicep/parameters.json \
+            --parameters     $EXTRA_PARAMS \
+            --query          properties.outputs \
+            --output         json)
+
+          WEBAPP_NAME=$(echo "$OUTPUT" | jq -r '.webAppName.value')
+          WEBAPP_URL=$(echo  "$OUTPUT" | jq -r '.webAppUrl.value')
+
+          echo "webapp_name=$WEBAPP_NAME" >> "$GITHUB_OUTPUT"
+          echo "webapp_url=$WEBAPP_URL"   >> "$GITHUB_OUTPUT"
+          echo "Deployed: $WEBAPP_NAME  →  https://$WEBAPP_URL"
+
+      # Set the GitHub PAT the agent needs at runtime.
+      # This is done after Bicep so it is never overwritten by a re-deploy.
+      - name: Configure runtime app settings
+        run: |
+          az webapp config appsettings set \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --name           "${{ steps.infra.outputs.webapp_name }}" \
+            --settings \
+              GITHUB_TOKEN="${{ secrets.APP_GITHUB_TOKEN }}" \
+              GITHUB_MODEL="gpt-4o-mini" \
+            --output none
+
+      - name: Deploy application
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.infra.outputs.webapp_name }}
+          package:  deploy.zip
+
+      # EF Core migrations run automatically on startup (Program.cs).
+      # Verify the deployment succeeded by polling /health.
+      - name: Health check
+        run: |
+          URL="https://${{ steps.infra.outputs.webapp_url }}/health"
+          echo "Polling $URL …"
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            if [ "$STATUS" == "200" ]; then
+              echo "✅ Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i/12: HTTP $STATUS – waiting 15 s …"
+            sleep 15
+          done
+          echo "❌ Health check failed after 12 attempts"
+          exit 1

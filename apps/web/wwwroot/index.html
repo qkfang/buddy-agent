@@ -3,85 +3,357 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Buddy Agent – Task Results</title>
+  <title>Buddy Agent</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; background: #f5f5f5; color: #222; }
-    h1 { font-size: 1.6rem; margin-bottom: 1rem; }
-    .toolbar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
-    button { padding: .45rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: .9rem; }
-    #refreshBtn { background: #0078d4; color: #fff; }
-    #refreshBtn:hover { background: #005fa3; }
-    #status { font-size: .85rem; color: #555; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
-    th { background: #0078d4; color: #fff; text-align: left; padding: .65rem 1rem; font-size: .85rem; }
-    td { padding: .6rem 1rem; font-size: .85rem; border-bottom: 1px solid #eee; vertical-align: top; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 0; background: #f0f4f8; color: #1a202c; }
+
+    header { background: #0078d4; color: #fff; padding: 1rem 1.5rem; display: flex; align-items: center; gap: .75rem; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+    header h1 { margin: 0; font-size: 1.3rem; font-weight: 600; }
+
+    nav { background: #fff; border-bottom: 1px solid #dde3ea; display: flex; gap: 0; padding: 0 1.5rem; }
+    nav button { background: none; border: none; padding: .75rem 1.25rem; font-size: .9rem; color: #555; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 500; transition: color .15s; }
+    nav button:hover { color: #0078d4; }
+    nav button.active { color: #0078d4; border-bottom-color: #0078d4; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Cards */
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.1); overflow: hidden; margin-bottom: 1.25rem; }
+    .card-header { padding: .75rem 1.25rem; background: #f7f9fc; border-bottom: 1px solid #e8edf2; display: flex; align-items: center; justify-content: space-between; }
+    .card-header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .card-body { padding: 1.25rem; }
+
+    /* Toolbar */
+    .toolbar { display: flex; gap: .75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .btn { padding: .45rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: .85rem; font-weight: 500; transition: background .15s; }
+    .btn-primary { background: #0078d4; color: #fff; }
+    .btn-primary:hover { background: #005fa3; }
+    .btn-secondary { background: #e5eaf0; color: #374151; }
+    .btn-secondary:hover { background: #d1d9e4; }
+    .btn-sm { padding: .3rem .7rem; font-size: .8rem; }
+    #status { font-size: .82rem; color: #666; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f0f4f8; text-align: left; padding: .6rem 1rem; font-size: .8rem; color: #4a5568; text-transform: uppercase; letter-spacing: .03em; border-bottom: 2px solid #dde3ea; }
+    td { padding: .6rem 1rem; font-size: .85rem; border-bottom: 1px solid #eef1f5; vertical-align: top; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #f0f7ff; }
-    .badge { display: inline-block; padding: .2rem .55rem; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+    tr:hover td { background: #f7faff; }
+    .badge { display: inline-block; padding: .18rem .55rem; border-radius: 12px; font-size: .75rem; font-weight: 600; }
     .badge-success { background: #e6f4ea; color: #1a7f37; }
     .badge-error   { background: #fde8e8; color: #b91c1c; }
-    .response-cell { max-width: 500px; white-space: pre-wrap; word-break: break-word; }
-    .empty { text-align: center; color: #888; padding: 2rem; }
+    .response-cell { max-width: 420px; white-space: pre-wrap; word-break: break-word; }
+    .url-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .prompt-cell { max-width: 300px; white-space: pre-wrap; word-break: break-word; }
+    .empty { text-align: center; color: #aaa; padding: 2rem; }
+
+    /* Runs grouped by task */
+    .task-group { margin-bottom: 1rem; }
+    .task-group-header { background: #fff; border-radius: 8px 8px 0 0; border: 1px solid #dde3ea; padding: .65rem 1.1rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+    .task-group-header:hover { background: #f7f9fc; }
+    .task-group-header .task-id { font-weight: 600; font-size: .9rem; color: #0078d4; }
+    .task-group-header .task-meta { font-size: .8rem; color: #666; }
+    .task-group-header .chevron { font-size: .9rem; color: #888; transition: transform .2s; }
+    .task-group-header.open .chevron { transform: rotate(90deg); }
+    .task-group-runs { border: 1px solid #dde3ea; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+    .task-group-runs table { margin: 0; }
+    .task-group-runs.hidden { display: none; }
+
+    /* Form */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: .35rem; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    label { font-size: .85rem; font-weight: 500; color: #374151; }
+    input[type=text], textarea, select {
+      border: 1px solid #c8d0db;
+      border-radius: 6px;
+      padding: .5rem .75rem;
+      font-size: .88rem;
+      font-family: inherit;
+      width: 100%;
+      background: #fff;
+      transition: border-color .15s;
+    }
+    input[type=text]:focus, textarea:focus { border-color: #0078d4; outline: none; box-shadow: 0 0 0 2px rgba(0,120,212,.15); }
+    textarea { resize: vertical; min-height: 90px; }
+    .hint { font-size: .78rem; color: #888; }
+    .form-actions { margin-top: 1.1rem; display: flex; gap: .75rem; align-items: center; }
+    .alert { padding: .65rem 1rem; border-radius: 6px; font-size: .85rem; margin-top: 1rem; display: none; }
+    .alert-success { background: #e6f4ea; color: #1a7f37; border: 1px solid #bbdec4; }
+    .alert-error   { background: #fde8e8; color: #b91c1c; border: 1px solid #f4b8b8; }
   </style>
 </head>
 <body>
-  <h1>🤖 Buddy Agent – Task Results</h1>
-  <div class="toolbar">
-    <button id="refreshBtn" onclick="loadResults()">↻ Refresh</button>
-    <span id="status"></span>
+
+<header>
+  <span style="font-size:1.5rem">🤖</span>
+  <h1>Buddy Agent</h1>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('tasks', this)">Tasks</button>
+  <button onclick="showTab('create', this)">Create Task</button>
+  <button onclick="showTab('runs', this)">Past Runs</button>
+</nav>
+
+<main>
+
+  <!-- ── Tasks tab ── -->
+  <div id="tab-tasks" class="tab-panel active">
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="loadTasks()">↻ Refresh</button>
+      <span id="tasksStatus"></span>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Existing Tasks</h2></div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>URL</th>
+            <th>Schedule</th>
+            <th>Prompt</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tasksBody">
+          <tr><td colspan="5" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
-  <table id="resultsTable">
-    <thead>
-      <tr>
-        <th>Task ID</th>
-        <th>Timestamp (UTC)</th>
-        <th>Status</th>
-        <th>Response</th>
-        <th>Error</th>
-      </tr>
-    </thead>
-    <tbody id="resultsBody">
-      <tr><td colspan="5" class="empty">Loading…</td></tr>
-    </tbody>
-  </table>
 
-  <script>
-    async function loadResults() {
-      const status = document.getElementById('status');
-      const body   = document.getElementById('resultsBody');
-      status.textContent = 'Loading…';
-      try {
-        const res  = await fetch('/api/results');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!data.length) {
-          body.innerHTML = '<tr><td colspan="5" class="empty">No results yet. The agent runs every hour.</td></tr>';
-        } else {
-          body.innerHTML = data.map(r => `
-            <tr>
-              <td>${esc(r.taskId)}</td>
-              <td>${new Date(r.timestamp).toLocaleString()}</td>
-              <td><span class="badge badge-${r.status === 'success' ? 'success' : 'error'}">${esc(r.status)}</span></td>
-              <td class="response-cell">${esc(r.response || '–')}</td>
-              <td>${esc(r.error || '–')}</td>
-            </tr>`).join('');
-        }
-        status.textContent = `Last updated: ${new Date().toLocaleTimeString()}  (${data.length} result(s))`;
-      } catch (e) {
-        body.innerHTML = `<tr><td colspan="5" class="empty">Error loading results: ${e.message}</td></tr>`;
-        status.textContent = '';
+  <!-- ── Create Task tab ── -->
+  <div id="tab-create" class="tab-panel">
+    <div class="card">
+      <div class="card-header"><h2>Create New Task</h2></div>
+      <div class="card-body">
+        <form id="createTaskForm" onsubmit="submitCreateTask(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="newId">Task ID <span style="color:#e53e3e">*</span></label>
+              <input type="text" id="newId" placeholder="my-task-001" required />
+              <span class="hint">Alphanumeric, hyphens and underscores only.</span>
+            </div>
+            <div class="form-group">
+              <label for="newUrl">URL (optional)</label>
+              <input type="text" id="newUrl" placeholder="https://example.com" />
+              <span class="hint">Content from this URL will be provided as context to the AI.</span>
+            </div>
+            <div class="form-group">
+              <label for="newSchedule">Schedule (optional)</label>
+              <input type="text" id="newSchedule" placeholder="0 * * * *" />
+              <span class="hint">Cron expression, e.g. <code>0 * * * *</code> for hourly.</span>
+            </div>
+            <div class="form-group full-width">
+              <label for="newPrompt">Prompt <span style="color:#e53e3e">*</span></label>
+              <textarea id="newPrompt" placeholder="What should the agent check or do?" required></textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create Task</button>
+            <button type="button" class="btn btn-secondary" onclick="resetCreateForm()">Reset</button>
+          </div>
+          <div id="createAlert" class="alert"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Past Runs tab ── -->
+  <div id="tab-runs" class="tab-panel">
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="loadRuns()">↻ Refresh</button>
+      <span id="runsStatus"></span>
+    </div>
+    <div id="runsContainer">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // ── Tab navigation ─────────────────────────────────────────────────────────────
+  function showTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+    if (name === 'tasks') loadTasks();
+    if (name === 'runs')  loadRuns();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // ── Tasks tab ─────────────────────────────────────────────────────────────────
+  async function loadTasks() {
+    const status = document.getElementById('tasksStatus');
+    const body   = document.getElementById('tasksBody');
+    status.textContent = 'Loading…';
+    try {
+      const res  = await fetch('/api/tasks');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.length) {
+        body.innerHTML = '<tr><td colspan="5" class="empty">No tasks found. Create one using the "Create Task" tab.</td></tr>';
+      } else {
+        body.innerHTML = data.map(t => `
+          <tr>
+            <td><strong>${esc(t.id)}</strong></td>
+            <td class="url-cell">${t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.url)}</a>` : '<span style="color:#aaa">–</span>'}</td>
+            <td>${t.schedule ? `<code>${esc(t.schedule)}</code>` : '<span style="color:#aaa">–</span>'}</td>
+            <td class="prompt-cell">${esc(t.prompt)}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewTaskRuns(${JSON.stringify(t.id)})">View Runs</button></td>
+          </tr>`).join('');
       }
+      status.textContent = `${data.length} task(s) · updated ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">Error: ${esc(e.message)}</td></tr>`;
+      status.textContent = '';
     }
+  }
 
-    function esc(s) {
-      return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;');
+  function viewTaskRuns(taskId) {
+    // Switch to Runs tab and filter by task
+    const runsBtn = document.querySelector('nav button:nth-child(3)');
+    showTab('runs', runsBtn);
+    loadRuns(taskId);
+  }
+
+  // ── Create Task tab ────────────────────────────────────────────────────────────
+  async function submitCreateTask(e) {
+    e.preventDefault();
+    const alert  = document.getElementById('createAlert');
+    const id       = document.getElementById('newId').value.trim();
+    const url      = document.getElementById('newUrl').value.trim();
+    const schedule = document.getElementById('newSchedule').value.trim();
+    const prompt   = document.getElementById('newPrompt').value.trim();
+
+    alert.style.display = 'none';
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, url: url || null, schedule: schedule || null, prompt })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('createAlert', 'error', data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      showAlert('createAlert', 'success', `Task "${esc(data.id)}" created successfully!`);
+      document.getElementById('createTaskForm').reset();
+    } catch (err) {
+      showAlert('createAlert', 'error', err.message);
     }
+  }
 
-    loadResults();
-    setInterval(loadResults, 60_000);
-  </script>
+  function resetCreateForm() {
+    document.getElementById('createTaskForm').reset();
+    document.getElementById('createAlert').style.display = 'none';
+  }
+
+  function showAlert(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  // ── Runs tab ──────────────────────────────────────────────────────────────────
+  async function loadRuns(filterTaskId) {
+    const status    = document.getElementById('runsStatus');
+    const container = document.getElementById('runsContainer');
+    status.textContent = 'Loading…';
+    container.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const url = filterTaskId ? `/api/results/${encodeURIComponent(filterTaskId)}` : '/api/results';
+      const res  = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (!data.length) {
+        container.innerHTML = '<div class="empty">No runs yet. The agent runs every hour.</div>';
+        status.textContent = filterTaskId ? `No runs for task "${filterTaskId}"` : 'No runs yet';
+        return;
+      }
+
+      // Group by taskId, preserving order of first appearance (already sorted desc by server)
+      const groups = {};
+      for (const r of data) {
+        if (!groups[r.taskId]) groups[r.taskId] = [];
+        groups[r.taskId].push(r);
+      }
+
+      const html = Object.entries(groups).map(([taskId, runs]) => {
+        const lastRun  = new Date(runs[0].timestamp);
+        const lastBadge = `<span class="badge badge-${runs[0].status === 'success' ? 'success' : 'error'}">${esc(runs[0].status)}</span>`;
+        const rows = runs.map(r => `
+          <tr>
+            <td>${new Date(r.timestamp).toLocaleString()}</td>
+            <td><span class="badge badge-${r.status === 'success' ? 'success' : 'error'}">${esc(r.status)}</span></td>
+            <td class="response-cell">${esc(r.response || '–')}</td>
+            <td>${esc(r.error || '–')}</td>
+          </tr>`).join('');
+
+        return `
+          <div class="task-group">
+            <div class="task-group-header open" onclick="toggleGroup(this)">
+              <span class="task-id">${esc(taskId)}</span>
+              <span class="task-meta">${runs.length} run(s) · last: ${lastRun.toLocaleString()} ${lastBadge}</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="task-group-runs">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp (local)</th>
+                    <th>Status</th>
+                    <th>Response</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }).join('');
+
+      container.innerHTML = html;
+      const total = data.length;
+      const taskCount = Object.keys(groups).length;
+      status.textContent = filterTaskId
+        ? `${total} run(s) for task "${filterTaskId}" · updated ${new Date().toLocaleTimeString()}`
+        : `${total} run(s) across ${taskCount} task(s) · updated ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+      container.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+      status.textContent = '';
+    }
+  }
+
+  function toggleGroup(header) {
+    header.classList.toggle('open');
+    header.nextElementSibling.classList.toggle('hidden');
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────────
+  loadTasks();
+  setInterval(() => {
+    const activeTab = document.querySelector('.tab-panel.active');
+    if (activeTab?.id === 'tab-tasks') loadTasks();
+    if (activeTab?.id === 'tab-runs')  loadRuns();
+  }, 60_000);
+</script>
 </body>
 </html>
+
